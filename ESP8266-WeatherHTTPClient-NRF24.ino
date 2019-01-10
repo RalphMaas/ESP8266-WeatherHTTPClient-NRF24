@@ -1,11 +1,14 @@
 #include <FS.h>
 #include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
 #include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
+#include <ESP8266HTTPClient.h>
 
 //needed for library
 #include <ESP8266WebServer.h>
 #include <DNSServer.h>
 #include <WiFiManager.h>          //https://github.com/kentaylor/WiFiManager
+#include "rmCommon.h"
+
 
 // Constants
 const int PIN_LED = 2; // D4 on NodeMCU and WeMos. Controls the onboard LED.
@@ -16,6 +19,10 @@ const char* CONFIG_FILE = "/config.json";
 // Variables
 // Indicates whether ESP has WiFi credentials saved from previous session
 bool initialConfig = false;
+Weather weather_base_info;
+
+unsigned long previousMillis = 0;
+unsigned long interval = 10000;
 
 // Default configuration values
 char knmiApiKey[17] = "";
@@ -75,18 +82,83 @@ void setup() {
 // Loop function
 
 void loop() {
+  checkConfigurationRequested();
+  if (WiFi.status() == WL_CONNECTED) 
+  {
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= interval)
+    {
+      previousMillis = currentMillis;
+      HTTPClient http; //Object of class HTTPClient
+      ReadKNMIApi(http);
+
+      Serial.println("Weather struct: ");
+      Serial.println(weather_base_info.City);
+      Serial.println(weather_base_info.Temp);
+      Serial.println(weather_base_info.AirPress);
+      Serial.println(weather_base_info.Sup);
+      Serial.println(weather_base_info.Sunder);
+    }
+  }
+}
+
+void ReadKNMIApi(HTTPClient& http)
+{
+    readConfigFile();
+    Serial.print("API Key: ");
+    Serial.println(knmiApiKey);
+    
+    Serial.print("API Location: ");
+    Serial.println(knmiApiKeyCity);
+    String url = (String)"http://weerlive.nl/api/json-data-10min.php?key="+knmiApiKey+"&locatie="+knmiApiKeyCity+"";
+    Serial.print("Url: ");
+    Serial.println(url);
+    
+  /*  http.begin("http://weerlive.nl/api/json-data-10min.php?key=051d293ebf&locatie=Middelburg");
+    int httpCode = http.GET();
+
+    if (httpCode > 0) 
+    {
+      String result = http.getString();
+      
+      Serial.println(result);
+      const size_t bufferSize = JSON_ARRAY_SIZE(1) + JSON_OBJECT_SIZE(1) + JSON_OBJECT_SIZE(49) + 670;
+      DynamicJsonBuffer jsonBuffer(bufferSize);
+      JsonObject& root = jsonBuffer.parseObject(result);
+      JsonObject& liveweer0 = root["liveweer"][0];
+      const char* liveweer0_plaats = liveweer0["plaats"]; // "Middelburg"
+      const char* liveweer0_temp = liveweer0["temp"]; // "8.3"
+      const char* liveweer0_luchtd = liveweer0["luchtd"]; // "08:45"
+      const char* liveweer0_sup = liveweer0["sup"]; // "08:45"
+      const char* liveweer0_sunder = liveweer0["sunder"]; // "16:40"
+
+      weather_base_info.PackId = CONST_WTHDFT; 
+      weather_base_info.City = liveweer0_plaats;
+      weather_base_info.Temp = liveweer0_temp;
+      weather_base_info.AirPress = liveweer0_luchtd;
+      weather_base_info.Sup = liveweer0_sup;
+      weather_base_info.Sunder = liveweer0_sunder;
+     
+   
+    }
+    http.end(); //Close connection
+  */
+}
+
+void checkConfigurationRequested()
+{
   // is configuration portal requested?
   if ((digitalRead(TRIGGER_PIN) == LOW) || (initialConfig)) {
      Serial.println("Configuration portal requested");
+ 
      digitalWrite(PIN_LED, LOW); // turn the LED on by making the voltage LOW to tell us we are in configuration mode.
-    digitalWrite(PIN_LED_CONFIG, HIGH); // In cofigmode.
+     digitalWrite(PIN_LED_CONFIG, HIGH); // In cofigmode.
     
     //Local intialization. Once its business is done, there is no need to keep it around
 
     // Extra parameters to be configured
     // After connecting, parameter.getValue() will get you the configured value
     // Format: <ID> <Placeholder text> <default value> <length> <custom HTML> <label placement>
-
     // KNMI API Key - this is a straight forward string parameter
     WiFiManagerParameter p_knmiApiKey("knmiApiKey", "KNMI API Key", knmiApiKey, 17);
     WiFiManagerParameter p_knmiApiKeyCity("knmiApiKeyCity", "City", knmiApiKeyCity, 20);
@@ -102,13 +174,7 @@ void loop() {
     wifiManager.addParameter(&p_hint);
     wifiManager.addParameter(&p_knmiApiKey);
     wifiManager.addParameter(&p_knmiApiKeyCity);
-
-    
-
-    // Sets timeout in seconds until configuration portal gets turned off.
-    // If not specified device will remain in configuration mode until
-    // switched off via webserver or device is restarted.
-    // wifiManager.setConfigPortalTimeout(600);
+   
 
     // It starts an access point 
     // and goes into a blocking loop awaiting configuration.
@@ -138,10 +204,6 @@ void loop() {
     // so resetting the device allows to go back into config mode again when it reboots.
     delay(5000);
   }
-
-  // Configuration portal not requested, so run normal loop
-  // Put your main code here, to run repeatedly...
-
 }
 
 bool readConfigFile() {
