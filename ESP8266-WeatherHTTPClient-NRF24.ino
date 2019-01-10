@@ -8,37 +8,18 @@
 #include <WiFiManager.h>          //https://github.com/kentaylor/WiFiManager
 
 // Constants
-
-// select wich pin will trigger the configuraton portal when set to LOW
-// ESP-01 users please note: the only pins available (0 and 2), are shared 
-// with the bootloader, so always set them HIGH at power-up
-// Onboard LED I/O pin on NodeMCU board
 const int PIN_LED = 2; // D4 on NodeMCU and WeMos. Controls the onboard LED.
 const int PIN_LED_CONFIG = 4; // D2 In config mode.
-
-/* Trigger for inititating config mode is Pin D3 and also flash button on NodeMCU
- * Flash button is convenient to use but if it is pressed it will stuff up the serial port device driver 
- * until the computer is rebooted on windows machines.
- */     
-const int TRIGGER_PIN = 0; // D3 on NodeMCU and WeMos.
-/*
- * Alternative trigger pin. Needs to be connected to a button to use this pin. It must be a momentary connection
- * not connected permanently to ground. Either trigger pin will work.
- */
-
-
+const int TRIGGER_PIN = 0; // D3 on NodeMCU and WeMos, set MCU con configmode.
 const char* CONFIG_FILE = "/config.json";
 
 // Variables
-
 // Indicates whether ESP has WiFi credentials saved from previous session
 bool initialConfig = false;
 
 // Default configuration values
-char thingspeakApiKey[17] = "";
-bool sensorDht22 = true;
-unsigned int pinSda = 2;
-unsigned int pinScl = 14;
+char knmiApiKey[17] = "";
+char knmiApiKeyCity[20] = "";
 
 // Function Prototypes
 
@@ -106,30 +87,10 @@ void loop() {
     // After connecting, parameter.getValue() will get you the configured value
     // Format: <ID> <Placeholder text> <default value> <length> <custom HTML> <label placement>
 
-    // Thingspeak API Key - this is a straight forward string parameter
-    WiFiManagerParameter p_thingspeakApiKey("thingspeakapikey", "Thingspeak API Key", thingspeakApiKey, 17);
-
-    // DHT-22 sensor present or not - bool parameter visualized using checkbox, so couple of things to note
-    // - value is always 'T' for true. When the HTML form is submitted this is the value that will be 
-    //   sent as a parameter. When unchecked, nothing will be sent by the HTML standard.
-    // - customhtml must be 'type="checkbox"' for obvious reasons. When the default is checked
-    //   append 'checked' too
-    // - labelplacement parameter is WFM_LABEL_AFTER for checkboxes as label has to be placed after the input field
-
-    char customhtml[24] = "type=\"checkbox\"";
-    if (sensorDht22) {
-      strcat(customhtml, " checked");
-    }
-    WiFiManagerParameter p_sensorDht22("sensordht22", "DHT-22 Sensor", "T", 2, customhtml, 1);
-
-    // I2C SCL and SDA parameters are integers so we need to convert them to char array but
-    // no other special considerations
-    char convertedValue[3];
-    sprintf(convertedValue, "%d", pinSda);
-    WiFiManagerParameter p_pinSda("pinsda", "I2C SDA pin", convertedValue, 3);
-    sprintf(convertedValue, "%d", pinScl);
-    WiFiManagerParameter p_pinScl("pinscl", "I2C SCL pin", convertedValue, 3);
-
+    // KNMI API Key - this is a straight forward string parameter
+    WiFiManagerParameter p_knmiApiKey("knmiApiKey", "KNMI API Key", knmiApiKey, 17);
+    WiFiManagerParameter p_knmiApiKeyCity("knmiApiKeyCity", "City", knmiApiKeyCity, 20);
+    
     // Just a quick hint
     WiFiManagerParameter p_hint("<small>*Hint: if you want to reuse the currently active WiFi credentials, leave SSID and Password fields empty</small>");
     
@@ -139,10 +100,10 @@ void loop() {
     //add all parameters here
     
     wifiManager.addParameter(&p_hint);
-    wifiManager.addParameter(&p_thingspeakApiKey);
-    wifiManager.addParameter(&p_sensorDht22);
-    wifiManager.addParameter(&p_pinSda);
-    wifiManager.addParameter(&p_pinScl);  
+    wifiManager.addParameter(&p_knmiApiKey);
+    wifiManager.addParameter(&p_knmiApiKeyCity);
+
+    
 
     // Sets timeout in seconds until configuration portal gets turned off.
     // If not specified device will remain in configuration mode until
@@ -163,10 +124,10 @@ void loop() {
 
     // Getting posted form values and overriding local variables parameters
     // Config file is written regardless the connection state
-    strcpy(thingspeakApiKey, p_thingspeakApiKey.getValue());
-    sensorDht22 = (strncmp(p_sensorDht22.getValue(), "T", 1) == 0);
-    pinSda = atoi(p_pinSda.getValue());
-    pinScl = atoi(p_pinScl.getValue());
+    strcpy(knmiApiKey, p_knmiApiKey.getValue());
+    strcpy(knmiApiKeyCity, p_knmiApiKeyCity.getValue());
+
+    
     // Writing JSON config file to flash for next boot
     writeConfigFile();
 
@@ -214,20 +175,12 @@ bool readConfigFile() {
 
     // Parse all config file parameters, override 
     // local config variables with parsed values
-    if (json.containsKey("thingspeakApiKey")) {
-      strcpy(thingspeakApiKey, json["thingspeakApiKey"]);      
+    if (json.containsKey("knmiApiKey")) {
+      strcpy(knmiApiKey, json["knmiApiKey"]);      
     }
     
-    if (json.containsKey("sensorDht22")) {
-      sensorDht22 = json["sensorDht22"];
-    }
-
-    if (json.containsKey("pinSda")) {
-      pinSda = json["pinSda"];
-    }
-    
-    if (json.containsKey("pinScl")) {
-      pinScl = json["pinScl"];
+    if (json.containsKey("knmiApiKeyCity")) {
+      strcpy(knmiApiKeyCity, json["knmiApiKeyCity"]);      
     }
   }
   Serial.println("\nConfig file was successfully parsed");
@@ -240,10 +193,8 @@ bool writeConfigFile() {
   JsonObject& json = jsonBuffer.createObject();
 
   // JSONify local configuration parameters
-  json["thingspeakApiKey"] = thingspeakApiKey;
-  json["sensorDht22"] = sensorDht22;
-  json["pinSda"] = pinSda;
-  json["pinScl"] = pinScl;
+  json["knmiApiKey"] = knmiApiKey;
+  json["knmiApiKeyCity"] = knmiApiKeyCity;
 
   // Open file for writing
   File f = SPIFFS.open(CONFIG_FILE, "w");
