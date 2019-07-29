@@ -15,11 +15,18 @@ const int PIN_LED = 2; // D4 on NodeMCU and WeMos. Controls the onboard LED.
 const int PIN_LED_CONFIG = 4; // D2 In config mode.
 const int TRIGGER_PIN = 0; // D3 on NodeMCU and WeMos, set MCU con configmode.
 const char* CONFIG_FILE = "/config.json";
+const int API_ON = 14; //D5 set the api read on. Off is only for test.
+bool READ_API = false;
 
 // Variables
 // Indicates whether ESP has WiFi credentials saved from previous session
 bool initialConfig = false;
 Weather weather_base_info;
+ForeCast weather_today;
+ForeCast weather_tomorrow;
+ForeCast weather_DayAfterTomorrow;
+WeatherText weather_text;
+WeatherText weather_warn;
 
 unsigned long previousMillis = 0;
 unsigned long interval = 10000;
@@ -39,11 +46,14 @@ void setup() {
   Serial.begin(115200);
   Serial.println("\n Starting");
 
+
   // Initialize the LED digital pin as an output.
   pinMode(PIN_LED, OUTPUT);
   pinMode(PIN_LED_CONFIG, OUTPUT);
   // Initialize trigger pins
   pinMode(TRIGGER_PIN, INPUT_PULLUP);
+  pinMode(API_ON, INPUT_PULLUP);
+  
   
   // Mount the filesystem
   bool result = SPIFFS.begin();
@@ -77,6 +87,7 @@ void setup() {
     Serial.print("Local ip: ");
     Serial.println(WiFi.localIP());
   }
+  
 }
 
 // Loop function
@@ -88,16 +99,38 @@ void loop() {
     unsigned long currentMillis = millis();
     if (currentMillis - previousMillis >= interval)
     {
+      READ_API = digitalRead(API_ON) == LOW;
       previousMillis = currentMillis;
       HTTPClient http; //Object of class HTTPClient
       ReadKNMIApi(http);
 
-      Serial.println("Weather struct: ");
+      Serial.println("Base Data");
+      Serial.println(weather_base_info.PackId);
       Serial.println(weather_base_info.City);
       Serial.println(weather_base_info.Temp);
       Serial.println(weather_base_info.AirPress);
       Serial.println(weather_base_info.Sup);
       Serial.println(weather_base_info.Sunder);
+
+      if (READ_API )
+      {
+        Serial.println("Today ");
+        Serial.println(weather_base_info.City);
+        Serial.println(weather_base_info.Temp);
+        Serial.println(weather_base_info.AirPress);
+        Serial.println(weather_base_info.Sup);
+        Serial.println(weather_base_info.Sunder);
+
+
+        Serial.println(weather_today.PackId);
+        Serial.println(weather_today.Icon);
+        Serial.println(weather_today.MaxTemp);
+        Serial.println(weather_today.MinTemp);
+        Serial.println(weather_today.Wind);
+        Serial.println(weather_today.WindDir);
+        Serial.println(weather_today.RainProcent);
+        Serial.println(weather_today.SunProcent);
+      }
     }
   }
 }
@@ -113,36 +146,115 @@ void ReadKNMIApi(HTTPClient& http)
     String url = (String)"http://weerlive.nl/api/json-data-10min.php?key="+knmiApiKey+"&locatie="+knmiApiKeyCity+"";
     Serial.print("Url: ");
     Serial.println(url);
-    
-  /*  http.begin("http://weerlive.nl/api/json-data-10min.php?key=051d293ebf&locatie=Middelburg");
-    int httpCode = http.GET();
 
-    if (httpCode > 0) 
-    {
-      String result = http.getString();
-      
-      Serial.println(result);
-      const size_t bufferSize = JSON_ARRAY_SIZE(1) + JSON_OBJECT_SIZE(1) + JSON_OBJECT_SIZE(49) + 670;
-      DynamicJsonBuffer jsonBuffer(bufferSize);
-      JsonObject& root = jsonBuffer.parseObject(result);
-      JsonObject& liveweer0 = root["liveweer"][0];
-      const char* liveweer0_plaats = liveweer0["plaats"]; // "Middelburg"
-      const char* liveweer0_temp = liveweer0["temp"]; // "8.3"
-      const char* liveweer0_luchtd = liveweer0["luchtd"]; // "08:45"
-      const char* liveweer0_sup = liveweer0["sup"]; // "08:45"
-      const char* liveweer0_sunder = liveweer0["sunder"]; // "16:40"
-
-      weather_base_info.PackId = CONST_WTHDFT; 
-      weather_base_info.City = liveweer0_plaats;
-      weather_base_info.Temp = liveweer0_temp;
-      weather_base_info.AirPress = liveweer0_luchtd;
-      weather_base_info.Sup = liveweer0_sup;
-      weather_base_info.Sunder = liveweer0_sunder;
-     
    
-    }
-    http.end(); //Close connection
-  */
+    if (READ_API )
+    {
+        Serial.print("API Live");
+        //example api call : http://weerlive.nl/api/json-data-10min.php?key=051d293ebf&locatie=Middelburg
+        http.begin(url);
+        int httpCode = http.GET();
+    
+        if (httpCode > 0) 
+        {
+          String result = http.getString();
+          
+          Serial.println(result);
+          const size_t bufferSize = JSON_ARRAY_SIZE(1) + JSON_OBJECT_SIZE(1) + JSON_OBJECT_SIZE(49) + 670;
+          DynamicJsonBuffer jsonBuffer(bufferSize);
+          JsonObject& root = jsonBuffer.parseObject(result);
+          JsonObject& liveweer0 = root["liveweer"][0];
+          
+          //Base data
+          const char* liveweer0_plaats = liveweer0["plaats"]; // "Middelburg"
+          const char* liveweer0_temp = liveweer0["temp"]; // "8.3"
+          const char* liveweer0_luchtd = liveweer0["luchtd"]; // "08:45"
+          const char* liveweer0_sup = liveweer0["sup"]; // "08:45"
+          const char* liveweer0_sunder = liveweer0["sunder"]; // "16:40"
+    
+          weather_base_info.PackId = CONST_WTHDFT; 
+          weather_base_info.City = liveweer0_plaats;
+          weather_base_info.Temp = liveweer0_temp;
+          weather_base_info.AirPress = liveweer0_luchtd;
+          weather_base_info.Sup = liveweer0_sup;
+          weather_base_info.Sunder = liveweer0_sunder;
+           
+
+         //Today
+          const char* liveweer0_icon0 = liveweer0["d0weer"];
+          const char* liveweer0_maxtemp0 = liveweer0["d0tmax"];
+          const char* liveweer0_mintemp0 = liveweer0["d0tmin"];
+          const char* liveweer0_wind0 = liveweer0["d0windk"];
+          const char* liveweer0_winddir0 = liveweer0["d0windr"];
+          const char* liveweer0_rainprocent0 = liveweer0["d0neerslag"];
+          const char* liveweer0_sunprocent0 = liveweer0["d0zon"];
+
+          weather_today.PackId = CONST_WTHTOD;
+          weather_today.Icon = liveweer0_icon0;
+          weather_today.MaxTemp = liveweer0_maxtemp0;
+          weather_today.MinTemp = liveweer0_mintemp0;
+          weather_today.Wind = liveweer0_wind0;
+          weather_today.WindDir = liveweer0_winddir0;
+          weather_today.RainProcent = liveweer0_rainprocent0;
+          weather_today.SunProcent = liveweer0_sunprocent0;
+
+       /*
+          //Tomorrow
+          const char* liveweer0_icon1 = liveweer0["d1weer"];
+          const char* liveweer0_maxtemp1 = liveweer0["d1tmax"];
+          const char* liveweer0_mintemp1 = liveweer0["d1tmin"];
+          const char* liveweer0_wind1 = liveweer0["d1windk"];
+          const char* liveweer0_winddir1 = liveweer0["d1windr"];
+          const char* liveweer0_rainprocent1 = liveweer0["d1neerslag"];
+          const char* liveweer0_sunprocent1 = liveweer0["d1zon"];
+
+          weather_tomorrow.PackId = CONST_WTHTOD;
+          weather_tomorrow.Icon = liveweer0_icon1;
+          weather_tomorrow.MaxTemp = liveweer0_maxtemp1;
+          weather_tomorrow.MinTemp = liveweer0_mintemp1;
+          weather_tomorrow.Wind = liveweer0_wind1;
+          weather_tomorrow.WindDir = liveweer0_winddir1;
+          weather_tomorrow.RainProcent = liveweer0_rainprocent1;
+          weather_tomorrow.SunProcent = liveweer0_sunprocent1;
+          
+
+          // Day after tomorrow
+          const char* liveweer0_icon2 = liveweer0["d2weer"];
+          const char* liveweer0_maxtemp2 = liveweer0["d2tmax"];
+          const char* liveweer0_mintemp2 = liveweer0["d2tmin"];
+          const char* liveweer0_wind2 = liveweer0["d2windk"];
+          const char* liveweer0_winddir2 = liveweer0["d2windr"];
+          const char* liveweer0_rainprocent2 = liveweer0["d2neerslag"];
+          const char* liveweer0_sunprocent2 = liveweer0["d2zon"];
+
+          weather_DayAfterTomorrow.PackId = CONST_WTHDAT;
+          weather_DayAfterTomorrow.Icon = liveweer0_icon2;
+          weather_DayAfterTomorrow.MaxTemp = liveweer0_maxtemp2;
+          weather_DayAfterTomorrow.MinTemp = liveweer0_mintemp2;
+          weather_DayAfterTomorrow.Wind = liveweer0_wind2;
+          weather_DayAfterTomorrow.WindDir = liveweer0_winddir2;
+          weather_DayAfterTomorrow.RainProcent = liveweer0_rainprocent2;
+          weather_DayAfterTomorrow.SunProcent = liveweer0_sunprocent2;
+
+          // weather text
+          const char* liveweer0_text = liveweer0["verw"];
+
+          weather_text.PackId = CONST_WTHTXT;
+          weather_text.Text = liveweer0_text;
+          */
+       }
+        http.end(); //Close connection
+      }
+      else
+      {
+          Serial.print("API Test");
+          weather_base_info.PackId = "TEST"; 
+          weather_base_info.City = "City";
+          weather_base_info.Temp = "Temp";
+          weather_base_info.AirPress = "AirPress";
+          weather_base_info.Sup = "Sup";
+          weather_base_info.Sunder = "Sunder";
+      }
 }
 
 void checkConfigurationRequested()
