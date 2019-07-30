@@ -102,6 +102,7 @@ void loop() {
       READ_API = digitalRead(API_ON) == LOW;
       previousMillis = currentMillis;
       HTTPClient http; //Object of class HTTPClient
+ 
       ReadKNMIApi(http);
 
       Serial.println("Base Data");
@@ -114,13 +115,6 @@ void loop() {
 
       if (READ_API )
       {
-        Serial.println("Today ");
-        Serial.println(weather_base_info.City);
-        Serial.println(weather_base_info.Temp);
-        Serial.println(weather_base_info.AirPress);
-        Serial.println(weather_base_info.Sup);
-        Serial.println(weather_base_info.Sunder);
-
 
         Serial.println(weather_today.PackId);
         Serial.println(weather_today.Icon);
@@ -130,6 +124,27 @@ void loop() {
         Serial.println(weather_today.WindDir);
         Serial.println(weather_today.RainProcent);
         Serial.println(weather_today.SunProcent);
+
+        Serial.println(weather_tomorrow.PackId);
+        Serial.println(weather_tomorrow.Icon);
+        Serial.println(weather_tomorrow.MaxTemp);
+        Serial.println(weather_tomorrow.MinTemp);
+        Serial.println(weather_tomorrow.Wind);
+        Serial.println(weather_tomorrow.WindDir);
+        Serial.println(weather_tomorrow.RainProcent);
+        Serial.println(weather_tomorrow.SunProcent);
+
+        Serial.println(weather_DayAfterTomorrow.PackId);
+        Serial.println(weather_DayAfterTomorrow.Icon);
+        Serial.println(weather_DayAfterTomorrow.MaxTemp);
+        Serial.println(weather_DayAfterTomorrow.MinTemp);
+        Serial.println(weather_DayAfterTomorrow.Wind);
+        Serial.println(weather_DayAfterTomorrow.WindDir);
+        Serial.println(weather_DayAfterTomorrow.RainProcent);
+        Serial.println(weather_DayAfterTomorrow.SunProcent);
+ 
+        Serial.println(weather_text.PackId);
+        Serial.println(weather_text.Text);
       }
     }
   }
@@ -152,7 +167,7 @@ void ReadKNMIApi(HTTPClient& http)
     {
         Serial.print("API Live");
         //example api call : http://weerlive.nl/api/json-data-10min.php?key=051d293ebf&locatie=Middelburg
-        http.begin(url);
+        http.begin("http://weerlive.nl/api/json-data-10min.php?key=051d293ebf&locatie=Middelburg");
         int httpCode = http.GET();
     
         if (httpCode > 0) 
@@ -198,7 +213,7 @@ void ReadKNMIApi(HTTPClient& http)
           weather_today.RainProcent = liveweer0_rainprocent0;
           weather_today.SunProcent = liveweer0_sunprocent0;
 
-       /*
+       
           //Tomorrow
           const char* liveweer0_icon1 = liveweer0["d1weer"];
           const char* liveweer0_maxtemp1 = liveweer0["d1tmax"];
@@ -208,7 +223,7 @@ void ReadKNMIApi(HTTPClient& http)
           const char* liveweer0_rainprocent1 = liveweer0["d1neerslag"];
           const char* liveweer0_sunprocent1 = liveweer0["d1zon"];
 
-          weather_tomorrow.PackId = CONST_WTHTOD;
+          weather_tomorrow.PackId = CONST_WTHTMO;
           weather_tomorrow.Icon = liveweer0_icon1;
           weather_tomorrow.MaxTemp = liveweer0_maxtemp1;
           weather_tomorrow.MinTemp = liveweer0_mintemp1;
@@ -241,7 +256,7 @@ void ReadKNMIApi(HTTPClient& http)
 
           weather_text.PackId = CONST_WTHTXT;
           weather_text.Text = liveweer0_text;
-          */
+          
        }
         http.end(); //Close connection
       }
