@@ -1,39 +1,44 @@
 
-#include <FS.h>
-#include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
-#include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
-#include <ESP8266HTTPClient.h>
+//#include <FS.h>
+//#include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
+//#include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
+//#include <ESP8266HTTPClient.h>
 
 //needed for library
-#include <ESP8266WebServer.h>
-#include <DNSServer.h>
+//#include <ESP8266WebServer.h>
+//#include <DNSServer.h>
 #include "rmCommon.h"
-#include "rmKNMIAPISetup.h"
 
 #include <SPI.h> //Call SPI library so you can communicate with the nRF24L01+
-//#include <nRF24L01.h> //nRF2401 libarary found at https://github.com/tmrh20/RF24/
-//#include <RF24.h> //nRF2401 libarary found at https://github.com/tmrh20/RF24/
-#include <WiFiManager.h>          //https://github.com/kentaylor/WiFiManager
+#include <nRF24L01.h> //nRF2401 libarary found at https://github.com/tmrh20/RF24/
+#include <RF24.h> //nRF2401 libarary found at https://github.com/tmrh20/RF24/
+//#include <WiFiManager.h>          //https://github.com/kentaylor/WiFiManager
 
 //NRF24
-/*
-const uint8_t PIN_NRF24_CE = 7; //This pin is used to set the nRF24 to standby (0) or active mode (1)
-const uint8_t PIN_NRF24_CSN = 8; //This pin is used to tell the nRF24 whether the SPI communication is a command
-RF24 wirelessSPI(PIN_NRF24_CE, PIN_NRF24_CSN); // Declare object from nRF24 library (Create your wireless SPI) 
+
+const uint8_t PIN_NRF24_CE = 2;//7; //This pin is used to set the nRF24 to standby (0) or active mode (1)
+const uint8_t PIN_NRF24_CSN =14;// 8; //This pin is used to tell the nRF24 whether the SPI communication is a command
+//RF24 wirelessSPI(PIN_NRF24_CE, PIN_NRF24_CSN); // Declare object from nRF24 library (Create your wireless SPI) 
+
 const uint64_t wAddress = 0xB00B1E50C3LL;  //Create pipe address to send data, the "LL" is for LongLong type
 const uint8_t rFChan = 89; //Set channel default (chan 84 is 2.484GHz to 2.489GHz)
 const uint8_t rDelay = 7; //this is based on 250us increments, 0 is 250us so 7 is 2 ms
 const uint8_t rNum = 5; //number of retries that will be attempted 
-*/
 
+RF24 myRadio(PIN_NRF24_CE,PIN_NRF24_CSN);
 
-
+// Constants
+const int PIN_LED_GREEN = 4; // GPIO 4 LED GREEN .
+const int PIN_LED_CONFIG_BLUE = 5; // GPIO 5 In LED BLUE (config mode).
+const int PIN_SWITCH_CONFIG = 16; // GPIO 16 set MCU configmode.
+const int PIN_SWITCH_API_ON = 0; //GPIO 0 set the api read on. Off is only for test.
 const char* CONFIG_FILE = "/config.json";
-bool READ_API = false;
 
 // Variables
-// Indicates whether ESP has WiFi credentials saved from previous session
+bool  READ_API = false;
 bool initialConfig = false;
+SupSunder supsunder;
+
 Weather weather_base_info;
 ForeCast weather_today;
 ForeCast weather_tomorrow;
@@ -48,11 +53,7 @@ unsigned long interval = 10000;
 char knmiApiKey[17] = "";
 char knmiApiKeyCity[20] = "";
 
-// Function Prototypes
-
-bool readConfigFile();
-bool writeConfigFile();
-
+/*
 void checkConfigurationRequested(){
   // is configuration portal requested?
   if ((digitalRead(PIN_SWITCH_CONFIG) == LOW) || (initialConfig)) {
@@ -113,6 +114,27 @@ void checkConfigurationRequested(){
   }
 }
 
+void SetupLedAndSwitches(){
+  // Initialize the LED digital pin as an output.
+  pinMode(PIN_LED_GREEN, OUTPUT);
+  pinMode(PIN_LED_CONFIG_BLUE, OUTPUT);
+  // Initialize switches
+  pinMode(PIN_SWITCH_CONFIG, INPUT_PULLUP);
+  pinMode(PIN_SWITCH_API_ON, INPUT_PULLUP);
+  // default LED Off 
+  digitalWrite(PIN_LED_GREEN, LOW);
+  digitalWrite(PIN_LED_CONFIG_BLUE, LOW);
+}
+
+void TestLedAndSwitches(){
+  digitalWrite(PIN_LED_GREEN, HIGH);
+  digitalWrite(PIN_LED_CONFIG_BLUE, HIGH);
+  if (digitalRead(PIN_SWITCH_CONFIG) == LOW)
+    Serial.println("config pushed");
+  if (digitalRead(PIN_SWITCH_API_ON) == LOW)
+    Serial.println("API pushed");  
+}
+
 void ReadKNMIApi(HTTPClient& http){
     readConfigFile();
     Serial.print("API Key: ");
@@ -125,15 +147,14 @@ void ReadKNMIApi(HTTPClient& http){
     Serial.println(url);
 
    
-    if (READ_API )
+    if (READ_API)
     {
         Serial.print("API Live");
         //example api call : http://weerlive.nl/api/json-data-10min.php?key=051d293ebf&locatie=Middelburg
         http.begin("http://weerlive.nl/api/json-data-10min.php?key=051d293ebf&locatie=Middelburg");
         int httpCode = http.GET();
     
-        if (httpCode > 0) 
-        {
+        if (httpCode > 0) {
           String result = http.getString();
           
           Serial.println(result);
@@ -222,15 +243,23 @@ void ReadKNMIApi(HTTPClient& http){
        }
         http.end(); //Close connection
       }
-      else
-      {
+      else {
           Serial.print("API Test");
-          weather_base_info.PackId = "TEST"; 
+          weather_base_info.PackId = "BASE"; 
           weather_base_info.City = "City";
           weather_base_info.Temp = "Temp";
           weather_base_info.AirPress = "AirPress";
           weather_base_info.Sup = "Sup";
           weather_base_info.Sunder = "Sunder";
+
+           weather_today.PackId = "TODAY";
+          weather_today.Icon = "Icon";
+          weather_today.MaxTemp = "Max";
+          weather_today.MinTemp = "Min";
+          weather_today.Wind = "Wind";
+          weather_today.WindDir = "Dir";
+          weather_today.RainProcent = "Rain";
+          weather_today.SunProcent = "Sun";
       }
 }
 
@@ -301,23 +330,8 @@ bool writeConfigFile() {
   Serial.println("\nConfig file was successfully saved");
   return true;
 }
-  
-// Setup function
-void setup() {
-  // Put your setup code here, to run once
-  Serial.begin(115200);
-  Serial.println("\n Starting");
-  SetupLedAndSwitches();
- 
-  //NRF24
-  /*
-  wirelessSPI.begin();  //Start the nRF24 module
-  wirelessSPI.setChannel(rFChan); 
-  wirelessSPI.setRetries(rDelay,rNum); //if a transmit fails to reach receiver (no ack packet) then this sets retry attempts and delay between retries   
-  wirelessSPI.openWritingPipe(wAddress); //open writing or transmit pipe
-  wirelessSPI.stopListening(); //go into transmit mode
-  */
-  
+
+void setupConfig(){
   // Mount the filesystem
   bool result = SPIFFS.begin();
   Serial.println("SPIFFS opened: " + result);
@@ -325,7 +339,9 @@ void setup() {
   if (!readConfigFile()) {
     Serial.println("Failed to read configuration file, using default values");
   }
+}
 
+void setupWifi(){
   WiFi.printDiag(Serial); //Remove this line if you do not want to see WiFi password printed
 
   if (WiFi.SSID() == "") {
@@ -350,85 +366,133 @@ void setup() {
     Serial.print("Local ip: ");
     Serial.println(WiFi.localIP());
   }
+}
+*/
+
+//const uint64_t pipes[2] = { 0xABCDABCD71LL, 0x544d52687CLL };   // Radio pipe addresses for the 2 nodes to communicate.
+
+void setupNRF24(){
+  Serial.println("Start Setup NRF24");
+  myRadio.begin();  //Start the nRF24 module
+  myRadio.setChannel(rFChan); 
+  myRadio.setRetries(rDelay,rNum); //if a transmit fails to reach receiver (no ack packet) then this sets retry attempts and delay between retries   
+  myRadio.openWritingPipe(wAddress); //open writing or transmit pipe
+  myRadio.stopListening(); //go into transmit mode
+
+
+ /* myRadio.begin();                           // Setup and configure rf radio
+  myRadio.setChannel(1);
+  myRadio.setPALevel(RF24_PA_MAX);
+  myRadio.setDataRate(RF24_1MBPS);
+  myRadio.setAutoAck(1);                     // Ensure autoACK is enabled
+  myRadio.setRetries(2,15);                  // Optionally, increase the delay between retries & # of retries
   
+  myRadio.setCRCLength(RF24_CRC_8);          // Use 8-bit CRC for performance
+  myRadio.openWritingPipe(pipes[0]);
+  myRadio.powerUp(); 
+  */
+  Serial.println("End Setup NRF24");
+
 }
 
-// Loop function
+void setup() {
+  // Put your setup code here, to run once
+  Serial.begin(115200);
+  Serial.println("\n Starting");
+ // SetupLedAndSwitches();
+  setupNRF24();
+//  writeConfigFile();
+//  setupWifi();
+}
+/*
+void dumpData(){
+   Serial.println("Base Data");
+  Serial.println(weather_base_info.PackId);
+  Serial.println(weather_base_info.City);
+  Serial.println(weather_base_info.Temp);
+  Serial.println(weather_base_info.AirPress);
+  Serial.println(weather_base_info.Sup);
+  Serial.println(weather_base_info.Sunder);
 
+  if (READ_API )
+  {
+
+      Serial.println(weather_today.PackId);
+      Serial.println(weather_today.Icon);
+      Serial.println(weather_today.MaxTemp);
+      Serial.println(weather_today.MinTemp);
+      Serial.println(weather_today.Wind);
+      Serial.println(weather_today.WindDir);
+      Serial.println(weather_today.RainProcent);
+      Serial.println(weather_today.SunProcent);
+
+      Serial.println(weather_tomorrow.PackId);
+      Serial.println(weather_tomorrow.Icon);
+      Serial.println(weather_tomorrow.MaxTemp);
+      Serial.println(weather_tomorrow.MinTemp);
+      Serial.println(weather_tomorrow.Wind);
+      Serial.println(weather_tomorrow.WindDir);
+      Serial.println(weather_tomorrow.RainProcent);
+      Serial.println(weather_tomorrow.SunProcent);
+
+      Serial.println(weather_DayAfterTomorrow.PackId);
+      Serial.println(weather_DayAfterTomorrow.Icon);
+      Serial.println(weather_DayAfterTomorrow.MaxTemp);
+      Serial.println(weather_DayAfterTomorrow.MinTemp);
+      Serial.println(weather_DayAfterTomorrow.Wind);
+      Serial.println(weather_DayAfterTomorrow.WindDir);
+      Serial.println(weather_DayAfterTomorrow.RainProcent);
+      Serial.println(weather_DayAfterTomorrow.SunProcent);
+
+      Serial.println(weather_text.PackId);
+      Serial.println(weather_text.Text);
+    }
+}
+*/
 void loop() {
-  checkConfigurationRequested();
+/*  checkConfigurationRequested();
   if (WiFi.status() == WL_CONNECTED) 
   {
     unsigned long currentMillis = millis();
     if (currentMillis - previousMillis >= interval)
     {
-     // READ_API = digitalRead(PIN_SWITCH_API_ON) == LOW;
+      READ_API = digitalRead(PIN_SWITCH_API_ON) == LOW;
       previousMillis = currentMillis;
       HTTPClient http; //Object of class HTTPClient
  
       ReadKNMIApi(http);
+      dumpData();
+    }
+  }
+ */   
+      
+    Serial.println("start NRF24");
+ 
+ 
+    supsunder.Sup = "07:30";
+    supsunder.Sunder = "21:34";
+    
 
-      Serial.println("Base Data");
-      Serial.println(weather_base_info.PackId);
-      Serial.println(weather_base_info.City);
-      Serial.println(weather_base_info.Temp);
-      Serial.println(weather_base_info.AirPress);
-      Serial.println(weather_base_info.Sup);
-      Serial.println(weather_base_info.Sunder);
-
-  /*    if (READ_API )
-      {
-
-          Serial.println(weather_today.PackId);
-          Serial.println(weather_today.Icon);
-          Serial.println(weather_today.MaxTemp);
-          Serial.println(weather_today.MinTemp);
-          Serial.println(weather_today.Wind);
-          Serial.println(weather_today.WindDir);
-          Serial.println(weather_today.RainProcent);
-          Serial.println(weather_today.SunProcent);
-  
-          Serial.println(weather_tomorrow.PackId);
-          Serial.println(weather_tomorrow.Icon);
-          Serial.println(weather_tomorrow.MaxTemp);
-          Serial.println(weather_tomorrow.MinTemp);
-          Serial.println(weather_tomorrow.Wind);
-          Serial.println(weather_tomorrow.WindDir);
-          Serial.println(weather_tomorrow.RainProcent);
-          Serial.println(weather_tomorrow.SunProcent);
-  
-          Serial.println(weather_DayAfterTomorrow.PackId);
-          Serial.println(weather_DayAfterTomorrow.Icon);
-          Serial.println(weather_DayAfterTomorrow.MaxTemp);
-          Serial.println(weather_DayAfterTomorrow.MinTemp);
-          Serial.println(weather_DayAfterTomorrow.Wind);
-          Serial.println(weather_DayAfterTomorrow.WindDir);
-          Serial.println(weather_DayAfterTomorrow.RainProcent);
-          Serial.println(weather_DayAfterTomorrow.SunProcent);
+    Serial.print("sizeof message : ");
+    Serial.println(sizeof(supsunder));
+   /* if(!myRadio.writeFast(&supsunder,sizeof(supsunder))){           
+        Serial.println("NRF24 - Error sending message");
+     }
+     else {
+        Serial.println("NRF24 send message done.");
+     }
+     */     
+   //Send default info
+   if (!myRadio.write(&supsunder, sizeof(supsunder))){  
+      delay(random(5,20)); 
+      if (!myRadio.write(&supsunder, sizeof(supsunder))){
+         Serial.println("NRF24 - Error sending message");
+      }
+   }
    
-          Serial.println(weather_text.PackId);
-          Serial.println(weather_text.Text);
-        }
-        */
-/*
-        Serial.println("start NRF24");
-       //Send default info
-       if (!wirelessSPI.write(&weather_base_info, sizeof(weather_base_info))){  //send data and remember it will retry if it fails
-          delay(random(5,20)); //as another back up, delay for a random amount of time and try again
-          if (!wirelessSPI.write(&weather_base_info, sizeof(weather_base_info))){
-            //set error flag if it fails again
-             Serial.println("NRF24 - Error sending message");
-
-          }
-       }
-        Serial.println("NRF24 send message");
-       
+   delay(1000);    
      //Send default today data
      //Send default tomorrow data
      //Send default day after today data
      //Send default day text data
-    }
- */
-    }
-  }
 }

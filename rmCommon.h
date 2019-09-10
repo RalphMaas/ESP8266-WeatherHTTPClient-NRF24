@@ -24,6 +24,11 @@ typedef struct{
   String Text;
 } WeatherText;
 
+typedef struct {
+  String  Sup;
+  String  Sunder;
+} SupSunder;
+
 
 const String CONST_WTHDFT = "WTH_DFT"; // default weather struct
 const String CONST_WTHTOD = "WTH_TOD"; // today weather struct
